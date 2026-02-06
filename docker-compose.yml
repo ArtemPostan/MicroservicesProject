@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  user-db:
+    image: postgres:latest
+    container_name: user-db
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+    ports:
+      - "5432:5432"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+    restart: on-failure
+
+  config-server:
+    build: ./ConfigServer
+    container_name: config-server
+    ports:
+      - "8888:8888"
+    # Мы оставляем его, но остальные сервисы на него теперь не обижаются
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
+      interval: 10s
+      retries: 5
+    environment:
+      - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
+      - EUREKA_CLIENT_FETCH_REGISTRY=false
+
+  eureka-server:
+    build: ./ServiceDiscoveryTest
+    container_name: eureka-server
+    ports:
+      - "8761:8761"  
+    environment:
+      - SPRING_CLOUD_CONFIG_ENABLED=false # Исправлено: теперь корректный список
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 10s
+      retries: 5
+
+  user-service:
+    build: ./HW2
+    container_name: user-service
+    ports:
+      - "8081:8080"
+    depends_on:
+      - user-db
+      - kafka
+      - eureka-server
+    environment:
+      - SPRING_CLOUD_CONFIG_ENABLED=false
+      - SPRING_APPLICATION_JSON={"eureka":{"client":{"service-url":{"defaultZone":"http://eureka-server:8761/eureka/"}}}}
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://user-db:5432/postgres
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=root
+      - APP_KAFKA_TOPIC=user-topic
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+
+
+  api-gateway:
+    build: ./GatewayTest
+    container_name: api-gateway
+    ports:
+      - "8085:8080"
+    depends_on:
+      - eureka-server
+    environment:
+      - SPRING_CLOUD_CONFIG_ENABLED=false
+  
+  kafka-service:
+    build: ./kafka-service
+    container_name: kafka-service
+    depends_on:
+      - eureka-server
+      - kafka
+    environment:
+      - SPRING_APPLICATION_NAME=kafka-service
+      - SPRING_CLOUD_CONFIG_ENABLED=false
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_KAFKA_CONSUMER_GROUP_ID=notification-group   
+      - SPRING_MAIL_HOST=smtp.gmail.com
+      - SPRING_MAIL_PORT=587
+      - SPRING_MAIL_USERNAME=arpost89@gmail.com
+      - SPRING_MAIL_PASSWORD=ваш_пароль_приложения_из_16_букв
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true
+      # Регистрация в Eureka
+      - SPRING_APPLICATION_JSON={"eureka":{"client":{"service-url":{"defaultZone":"http://eureka-server:8761/eureka/"}}}}
