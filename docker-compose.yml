@@ -39,8 +39,7 @@ services:
     build: ./ConfigServer
     container_name: config-server
     ports:
-      - "8888:8888"
-    # Мы оставляем его, но остальные сервисы на него теперь не обижаются
+      - "8888:8888" 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
       interval: 10s
@@ -55,7 +54,7 @@ services:
     ports:
       - "8761:8761"  
     environment:
-      - SPRING_CLOUD_CONFIG_ENABLED=false # Исправлено: теперь корректный список
+      - SPRING_CLOUD_CONFIG_ENABLED=false 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
       interval: 10s
@@ -108,5 +107,4 @@ services:
       - SPRING_MAIL_PASSWORD=ваш_пароль_приложения_из_16_букв
       - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
       - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true
-      # Регистрация в Eureka
       - SPRING_APPLICATION_JSON={"eureka":{"client":{"service-url":{"defaultZone":"http://eureka-server:8761/eureka/"}}}}
